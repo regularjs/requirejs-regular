@@ -89,3 +89,8 @@ define("rgl!foo.html", function(){ return [{"type":"element","tag":"h2","attrs":
 
 
 Optimizer Example [see Demo's build.js](https://github.com/regularjs/requirejs-regular/blob/master/demo/build.js)
+
+
+## License
+
+MITTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
