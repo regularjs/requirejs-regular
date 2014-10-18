@@ -1,0 +1,13 @@
+{
+  "name": "requirejs-regular",
+  "version": "0.1.0",
+  "main": "rgl.js",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "components",
+    "tmp",
+    "test",
+    "package.json"
+  ]
+}

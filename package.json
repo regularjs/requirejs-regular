@@ -1,0 +1,31 @@
+{
+  "name": "requirejs-regular",
+  "version": "0.1.0",
+  "description": "An AMD loader plugin for precompile regularjs template.",
+  "categories": [
+    "Loader plugins"
+  ],
+  "main": "regular.js",
+  "github": "https://github.com/regularjs/requirejs-regular",
+  "bugs": {
+    "web": "https://github.com/regularjs/requirejs-regular/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/regularjs/requirejs-regular"
+  },
+  "denpendency": {},
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://www.opensource.org/licenses/mit-license.php"
+    }
+  ],
+  "dependencies": {
+    "gulp": "^3.8.8",
+    "gulp-requirejs": "^0.1.3",
+    "gulp-uglify": "^1.0.1",
+    "gulp-webpack": "^1.0.0",
+    "requirejs": "^2.1.15"
+  }
+}
