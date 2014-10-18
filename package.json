@@ -21,6 +21,9 @@
       "url": "http://www.opensource.org/licenses/mit-license.php"
     }
   ],
+  "scripts": {
+    "test" : "cd demo && node build"
+  },
   "dependencies": {
     "gulp": "^3.8.8",
     "gulp-requirejs": "^0.1.3",
