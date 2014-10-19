@@ -84,8 +84,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    function load(name, req, onLoad, config){
 	        // load text1 files with text1 plugin
 	        text.load(name, req, function(data,r){
-	            onLoad(data);
-	            buildMap[name] = data;
+	            onLoad(
+	              (buildMap[name] = parser.parse(data, false))
+	            );
 	        }, config);
 	    }
 
@@ -96,7 +97,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                tpl(template,{
 	                    pn: pn,
 	                    mn: mn,
-	                    ast: parser.parse(buildMap[mn])
+	                    ast: JSON.stringify(buildMap[mn])
 	                })
 	            )
 	        }
@@ -108,7 +109,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	}.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
 
 /***/ },
 /* 1 */
@@ -2391,7 +2392,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            !!process.versions.node &&
 	            !process.versions['node-webkit'])) {
 	        //Using special require.nodeRequire, something added by r.js.
-	        fs = __webpack_require__(4).nodeRequire('fs');
+	        fs = __webpack_require__(3).nodeRequire('fs');
 
 	        text.get = function (url, callback, errback) {
 	            try {
@@ -2534,10 +2535,32 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return text;
 	}.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9)(module), __webpack_require__(3)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9)(module), __webpack_require__(4)))
 
 /***/ },
 /* 3 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var map = {
+		"./text": 2,
+		"./text.js": 2
+	};
+	function webpackContext(req) {
+		return __webpack_require__(webpackContextResolve(req));
+	};
+	function webpackContextResolve(req) {
+		return map[req] || (function() { throw new Error("Cannot find module '" + req + "'.") }());
+	};
+	webpackContext.keys = function webpackContextKeys() {
+		return Object.keys(map);
+	};
+	webpackContext.resolve = webpackContextResolve;
+	module.exports = webpackContext;
+	webpackContext.id = 3;
+
+
+/***/ },
+/* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// shim for using process in browser
@@ -2603,28 +2626,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	process.chdir = function (dir) {
 	    throw new Error('process.chdir is not supported');
 	};
-
-
-/***/ },
-/* 4 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var map = {
-		"./text": 2,
-		"./text.js": 2
-	};
-	function webpackContext(req) {
-		return __webpack_require__(webpackContextResolve(req));
-	};
-	function webpackContextResolve(req) {
-		return map[req] || (function() { throw new Error("Cannot find module '" + req + "'.") }());
-	};
-	webpackContext.keys = function webpackContextKeys() {
-		return Object.keys(map);
-	};
-	webpackContext.resolve = webpackContextResolve;
-	module.exports = webpackContext;
-	webpackContext.id = 4;
 
 
 /***/ },

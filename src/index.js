@@ -28,8 +28,9 @@ define('rgl',['text', 'parser'], function (text, parser) {
     function load(name, req, onLoad, config){
         // load text1 files with text1 plugin
         text.load(name, req, function(data,r){
-            onLoad(data);
-            buildMap[name] = data;
+            onLoad(
+              (buildMap[name] = parser.parse(data, false))
+            );
         }, config);
     }
 
@@ -40,7 +41,7 @@ define('rgl',['text', 'parser'], function (text, parser) {
                 tpl(template,{
                     pn: pn,
                     mn: mn,
-                    ast: parser.parse(buildMap[mn])
+                    ast: JSON.stringify(buildMap[mn])
                 })
             )
         }
