@@ -1,6 +1,6 @@
 {
   "name": "requirejs-regular",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "An AMD loader plugin for precompile regularjs template.",
   "categories": [
     "Loader plugins"

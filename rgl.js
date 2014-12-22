@@ -82,10 +82,11 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 	    function load(name, req, onLoad, config){
+	        var rgl_config = config.rgl || {}
 	        // load text1 files with text1 plugin
 	        text.load(name, req, function(data,r){
 	            onLoad(
-	              (buildMap[name] = parser.parse(data, false))
+	              (buildMap[name] = parser.parse(data, {END: rgl_config.END, BEGIN: rgl_config.BEGIN, stringify: false}))
 	            );
 	        }, config);
 	    }
@@ -109,7 +110,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	}.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(4)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
 /***/ },
 /* 1 */
@@ -172,13 +173,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	/***/ function(module, exports, __webpack_require__) {
 
 		
-		var Parser = __webpack_require__(1)
-		var Lexer = __webpack_require__(2)
+		var Parser = __webpack_require__(2)
+		var Lexer = __webpack_require__(3)
+		var config = __webpack_require__(1); 
 
-		exports.parse = function(str, stringify){
+		exports.parse = function(str, options){
+		  options = options || {};
+
+		  if(options.BEGIN || options.END){
+		    if(options.BEGIN) config.BEGIN = options.BEGIN;
+		    if(options.END) config.END = options.END;
+		    Lexer.setup();
+		  }
 		  var ast = new Parser(str).parse();
-		  return stringify === false? ast : JSON.stringify(ast);
+		  return options.stringify === false? ast : JSON.stringify(ast);
 		}
+
 
 
 
@@ -186,9 +196,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	/* 1 */
 	/***/ function(module, exports, __webpack_require__) {
 
-		var _ = __webpack_require__(3);
-		var node = __webpack_require__(4);
-		var Lexer = __webpack_require__(2);
+		
+		module.exports = {
+		'BEGIN': '{{',
+		'END': '}}'
+		}
+
+	/***/ },
+	/* 2 */
+	/***/ function(module, exports, __webpack_require__) {
+
+		var _ = __webpack_require__(4);
+
+		var config = __webpack_require__(1);
+		var node = __webpack_require__(5);
+		var Lexer = __webpack_require__(3);
 		var varName = _.varName;
 		var ctxName = _.ctxName;
 		var isPath = _.makePredicate("STRING IDENT NUMBER");
@@ -378,7 +400,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		    case "STRING":
 		      this.next();
 		      var value = ll.value;
-		      if(~value.indexOf('{{')){
+		      if(~value.indexOf(config.BEGIN) && ~value.indexOf(config.END)){
 		        var constant = true;
 		        var parsed = new Parser(value, { mode: 2 }).parse();
 		        if(parsed.length === 1 && parsed[0].type === 'expression') return parsed[0];
@@ -484,7 +506,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		      container.push(this.statement());
 		    }
 		  }
-		  if(ll.value !== 'list') this.error('expect ' + '{{/list}} got ' + '{{/' + ll.value + '}}', ll.pos );
+		  if(ll.value !== 'list') this.error('expect ' + 'list got ' + '/' + ll.value + ' ', ll.pos );
 		  return node.list(sequence, variable, consequent, alternate);
 		}
 
@@ -813,12 +835,17 @@ return /******/ (function(modules) { // webpackBootstrap
 		// [ assign[,assign]*]
 		op.array = function(){
 		  var code = [this.match('[').type], item;
-		  while(item = this.assign()){
-		    code.push(item.get);
-		    if(this.eat(',')) code.push(",");
-		    else break;
+		  if( this.eat("]") ){
+
+		     code.push("]");
+		  } else {
+		    while(item = this.assign()){
+		      code.push(item.get);
+		      if(this.eat(',')) code.push(",");
+		      else break;
+		    }
+		    code.push(this.match(']').type);
 		  }
-		  code.push(this.match(']').type);
 		  return {get: code.join("")};
 		}
 
@@ -844,10 +871,21 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 	/***/ },
-	/* 2 */
+	/* 3 */
 	/***/ function(module, exports, __webpack_require__) {
 
-		var _ = __webpack_require__(3);
+		var _ = __webpack_require__(4);
+		var config = __webpack_require__(1);
+
+		// some custom tag  will conflict with the Lexer progress
+		var conflictTag = {"}": "{", "]": "["}, map1, map2;
+		// some macro for lexer
+		var macro = {
+		  'NAME': /(?:[:_A-Za-z][-\.:_0-9A-Za-z]*)/,
+		  'IDENT': /[\$_A-Za-z][_0-9A-Za-z\$]*/,
+		  'SPACE': /[\r\n\f ]/
+		}
+
 
 		var test = /a|(b)/.exec("a");
 		var testSubCapure = test && test[1] === undefined? 
@@ -861,6 +899,12 @@ return /******/ (function(modules) { // webpackBootstrap
 		}
 
 		function Lexer(input, opts){
+		  if(conflictTag[config.END]){
+		    this.markStart = conflictTag[config.END];
+		    this.markEnd = config.END;
+		  }
+
+
 		  this.input = (input||"").trim();
 		  this.opts = opts || {};
 		  this.map = this.opts.mode !== 2?  map1: map2;
@@ -875,7 +919,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		  str = (str || this.input).trim();
 		  var tokens = [], split, test,mlen, token, state;
 		  this.input = str, 
-		    
+		  this.marks = 0;
 		  // init the pos index
 		  this.index=0;
 		  var i = 0;
@@ -934,47 +978,77 @@ return /******/ (function(modules) { // webpackBootstrap
 		  }
 		  return token;
 		}
-		/**
-		 * 进入某种状态
-		 * @param  {[type]} state [description]
-		 * @return {[type]}
-		 */
 		lo.enter = function(state){
-		  // 如果有多层状态则 则这里用一个栈来标示，
-		  // 个人目前还没有遇到词法解析阶段需要多层判断的场景
 		  this.states.push(state)
 		  return this;
 		}
-		/**
-		 * 退出
-		 * @return {[type]}
-		 */
 
 		lo.state = function(){
 		  var states = this.states;
 		  return states[states.length-1];
 		}
 
-		/**
-		 * 退出某种状态
-		 * @return {[type]}
-		 */
 		lo.leave = function(state){
 		  var states = this.states;
 		  if(!state || states[states.length-1] === state) states.pop()
 		}
 
-		var macro = {
-		  'BEGIN': '{{',
-		  'END': '}}',
-		  //http://www.w3.org/TR/REC-xml/#NT-Name
-		  // ":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
-		  // 暂时不这么严格，提取合适范围
-		  // 'NAME': /(?:[:_A-Za-z\xC0-\u2FEF\u3001-\uD7FF\uF900-\uFFFF][-\.:_0-9A-Za-z\xB7\xC0-\u2FEF\u3001-\uD7FF\uF900-\uFFFF]*)/
-		  'NAME': /(?:[:_A-Za-z][-\.:_0-9A-Za-z]*)/,
-		  'IDENT': /[\$_A-Za-z][_0-9A-Za-z\$]*/,
-		  'SPACE': /[\r\n\f ]/
+
+		Lexer.setup = function(){
+		  macro.END = config.END;
+		  macro.BEGIN = config.BEGIN;
+		  //
+		  map1 = genMap([
+		    // INIT
+		    rules.ENTER_JST,
+		    rules.ENTER_TAG,
+		    rules.TEXT,
+
+		    //TAG
+		    rules.TAG_NAME,
+		    rules.TAG_OPEN,
+		    rules.TAG_CLOSE,
+		    rules.TAG_PUNCHOR,
+		    rules.TAG_ENTER_JST,
+		    rules.TAG_UNQ_VALUE,
+		    rules.TAG_STRING,
+		    rules.TAG_SPACE,
+		    rules.TAG_COMMENT,
+
+		    // JST
+		    rules.JST_OPEN,
+		    rules.JST_CLOSE,
+		    rules.JST_COMMENT,
+		    rules.JST_EXPR_OPEN,
+		    rules.JST_IDENT,
+		    rules.JST_SPACE,
+		    rules.JST_LEAVE,
+		    rules.JST_NUMBER,
+		    rules.JST_PUNCHOR,
+		    rules.JST_STRING,
+		    rules.JST_COMMENT
+		    ])
+
+		  // ignored the tag-relative token
+		  map2 = genMap([
+		    // INIT no < restrict
+		    rules.ENTER_JST2,
+		    rules.TEXT,
+		    // JST
+		    rules.JST_COMMENT,
+		    rules.JST_OPEN,
+		    rules.JST_CLOSE,
+		    rules.JST_EXPR_OPEN,
+		    rules.JST_IDENT,
+		    rules.JST_SPACE,
+		    rules.JST_LEAVE,
+		    rules.JST_NUMBER,
+		    rules.JST_PUNCHOR,
+		    rules.JST_STRING,
+		    rules.JST_COMMENT
+		    ])
 		}
+
 
 		function genMap(rules){
 		  var rule, map = {}, sign;
@@ -1022,9 +1096,6 @@ return /******/ (function(modules) { // webpackBootstrap
 		  return map;
 		}
 
-		/**
-		 * build the mode 1 and mode 2‘s tokenizer
-		 */
 		var rules = {
 
 		  // 1. INIT
@@ -1052,7 +1123,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		  // 2. TAG
 		  // --------------------
 		  TAG_NAME: [/{NAME}/, 'NAME', 'TAG'],
-		  TAG_UNQ_VALUE: [/[^&"'=><`\r\n\f ]+/, 'UNQ', 'TAG'],
+		  TAG_UNQ_VALUE: [/[^\{}&"'=><`\r\n\f ]+/, 'UNQ', 'TAG'],
 
 		  TAG_OPEN: [/<({NAME})\s*/, function(all, one){
 		    return {type: 'TAG_OPEN', value: one}
@@ -1091,11 +1162,16 @@ return /******/ (function(modules) { // webpackBootstrap
 		    }
 		  }, 'JST'],
 		  JST_LEAVE: [/{END}/, function(){
-		    this.leave('JST');
-		    return {type: 'END'}
+		    this.firstEnterStart = false;
+		    if(!this.markEnd || !this.marks ){
+		      this.leave('JST');
+		      return {type: 'END'}
+		    }else{
+		      this.marks--;
+		      return {type: this.markEnd, value: this.markEnd}
+		    }
 		  }, 'JST'],
-
-		  JST_CLOSE: [/{BEGIN}\s*\/\s*({IDENT})\s*{END}/, function(all, one){
+		  JST_CLOSE: [/{BEGIN}\s*\/({IDENT})\s*{END}/, function(all, one){
 		    this.leave('JST');
 		    return {
 		      type: 'CLOSE',
@@ -1106,11 +1182,20 @@ return /******/ (function(modules) { // webpackBootstrap
 		    this.leave();
 		  }, 'JST'],
 		  JST_EXPR_OPEN: ['{BEGIN}',function(all, one){
-		    var escape = one === '=';
+		    if(all === this.markStart){
+		      if(this.firstEnterStart){
+		        this.marks++
+		        this.firstEnterStart = false;
+		        return { type: this.markStart, value: this.markStart };
+		      }else{
+		        this.firstEnterStart = true;
+		      }
+		    }
 		    return {
 		      type: 'EXPR_OPEN',
-		      escape: escape
+		      escape: false
 		    }
+
 		  }, 'JST'],
 		  JST_IDENT: ['{IDENT}', 'IDENT', 'JST'],
 		  JST_SPACE: [/[ \r\n\f]+/, null, 'JST'],
@@ -1126,56 +1211,9 @@ return /******/ (function(modules) { // webpackBootstrap
 		  }, 'JST']
 		}
 
-		//
-		var map1 = genMap([
-		  // INIT
-		  rules.ENTER_JST,
-		  rules.ENTER_TAG,
-		  rules.TEXT,
 
-		  //TAG
-		  rules.TAG_NAME,
-		  rules.TAG_OPEN,
-		  rules.TAG_CLOSE,
-		  rules.TAG_PUNCHOR,
-		  rules.TAG_ENTER_JST,
-		  rules.TAG_UNQ_VALUE,
-		  rules.TAG_STRING,
-		  rules.TAG_SPACE,
-		  rules.TAG_COMMENT,
-
-		  // JST
-		  rules.JST_OPEN,
-		  rules.JST_CLOSE,
-		  rules.JST_COMMENT,
-		  rules.JST_EXPR_OPEN,
-		  rules.JST_IDENT,
-		  rules.JST_SPACE,
-		  rules.JST_LEAVE,
-		  rules.JST_NUMBER,
-		  rules.JST_PUNCHOR,
-		  rules.JST_STRING,
-		  rules.JST_COMMENT
-		  ])
-
-		// ignored the tag-relative token
-		var map2 = genMap([
-		  // INIT no < restrict
-		  rules.ENTER_JST2,
-		  rules.TEXT,
-		  // JST
-		  rules.JST_COMMENT,
-		  rules.JST_OPEN,
-		  rules.JST_CLOSE,
-		  rules.JST_EXPR_OPEN,
-		  rules.JST_IDENT,
-		  rules.JST_SPACE,
-		  rules.JST_LEAVE,
-		  rules.JST_NUMBER,
-		  rules.JST_PUNCHOR,
-		  rules.JST_STRING,
-		  rules.JST_COMMENT
-		  ])
+		// setup when first config
+		Lexer.setup();
 
 
 
@@ -1185,12 +1223,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 	/***/ },
-	/* 3 */
+	/* 4 */
 	/***/ function(module, exports, __webpack_require__) {
 
-		/* WEBPACK VAR INJECTION */(function(global) {__webpack_require__(5);
+		/* WEBPACK VAR INJECTION */(function(global) {__webpack_require__(6);
 		var _  = module.exports;
-		var entities = __webpack_require__(6);
+		var entities = __webpack_require__(7);
 		var slice = [].slice;
 		var o2str = ({}).toString;
 		var win = typeof window !=='undefined'? window: global;
@@ -1722,7 +1760,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 	/***/ },
-	/* 4 */
+	/* 5 */
 	/***/ function(module, exports, __webpack_require__) {
 
 		module.exports = {
@@ -1781,7 +1819,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 	/***/ },
-	/* 5 */
+	/* 6 */
 	/***/ function(module, exports, __webpack_require__) {
 
 		// shim for es5
@@ -1871,7 +1909,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 	/***/ },
-	/* 6 */
+	/* 7 */
 	/***/ function(module, exports, __webpack_require__) {
 
 		// http://stackoverflow.com/questions/1354064/how-to-convert-characters-to-html-entities-using-plain-javascript
@@ -2392,7 +2430,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            !!process.versions.node &&
 	            !process.versions['node-webkit'])) {
 	        //Using special require.nodeRequire, something added by r.js.
-	        fs = __webpack_require__(3).nodeRequire('fs');
+	        fs = __webpack_require__(4).nodeRequire('fs');
 
 	        text.get = function (url, callback, errback) {
 	            try {
@@ -2535,32 +2573,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return text;
 	}.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9)(module), __webpack_require__(4)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9)(module), __webpack_require__(3)))
 
 /***/ },
 /* 3 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var map = {
-		"./text": 2,
-		"./text.js": 2
-	};
-	function webpackContext(req) {
-		return __webpack_require__(webpackContextResolve(req));
-	};
-	function webpackContextResolve(req) {
-		return map[req] || (function() { throw new Error("Cannot find module '" + req + "'.") }());
-	};
-	webpackContext.keys = function webpackContextKeys() {
-		return Object.keys(map);
-	};
-	webpackContext.resolve = webpackContextResolve;
-	module.exports = webpackContext;
-	webpackContext.id = 3;
-
-
-/***/ },
-/* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// shim for using process in browser
@@ -2626,6 +2642,28 @@ return /******/ (function(modules) { // webpackBootstrap
 	process.chdir = function (dir) {
 	    throw new Error('process.chdir is not supported');
 	};
+
+
+/***/ },
+/* 4 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var map = {
+		"./text": 2,
+		"./text.js": 2
+	};
+	function webpackContext(req) {
+		return __webpack_require__(webpackContextResolve(req));
+	};
+	function webpackContextResolve(req) {
+		return map[req] || (function() { throw new Error("Cannot find module '" + req + "'.") }());
+	};
+	webpackContext.keys = function webpackContextKeys() {
+		return Object.keys(map);
+	};
+	webpackContext.resolve = webpackContextResolve;
+	module.exports = webpackContext;
+	webpackContext.id = 4;
 
 
 /***/ },

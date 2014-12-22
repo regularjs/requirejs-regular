@@ -1,15 +1,19 @@
+
 require.config({
     paths : {
         "rgl": '../../rgl',
         "text": '../../bower_components/requirejs-text/text',
         "regularjs": '../../bower_components/regularjs/dist/regular'
+    },
+    rgl: {
+      BEGIN: '{{',
+      END: '}}'
     }
+
 });
 
 
 require(['rgl!foo.html', 'text!foo.html', 'regularjs'], function(foo, haha , Regular){
-    console.log(foo)
-    console.log(haha)
 
     var Foo = Regular.extend({
       template: foo

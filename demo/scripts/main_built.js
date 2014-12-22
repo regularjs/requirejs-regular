@@ -398,7 +398,7 @@ define('text!foo.html',[],function () { return '<h2>{{message}}</h2>\n';});
 
 /**
 @author	leeluolee
-@version	0.2.12
+@version	0.2.15-alpha
 @homepage	http://regularjs.github.io
 */
 ;(function(){
@@ -611,6 +611,7 @@ require.register("regularjs/src/Regular.js", function(exports, require, module){
 var Lexer = require("./parser/Lexer.js");
 var Parser = require("./parser/Parser.js");
 var dom = require("./dom.js");
+var config = require("./config.js");
 var Group = require('./group.js');
 var _ = require('./util');
 var extend = require('./helper/extend.js');
@@ -635,11 +636,15 @@ var Regular = function(options){
   env.isRunning = true;
   var node, template;
 
+  console.log(this)
   options = options || {};
   options.data = options.data || {};
   options.computed = options.computed || {};
+  options.events = options.events || {};
   if(this.data) _.extend(options.data, this.data);
   if(this.computed) _.extend(options.computed, this.computed);
+  if(this.events) _.extend(options.events, this.events);
+
   _.extend(this, options, true);
   if(this.$parent){
      this.$parent._append(this);
@@ -663,7 +668,6 @@ var Regular = function(options){
   // if have events
   if(this.events){
     this.$on(this.events);
-    this.events = null;
   }
 
   this.config && this.config(this.data);
@@ -698,8 +702,6 @@ _.extend(Regular, {
   // private data stuff
   _directives: { __regexp__:[] },
   _plugins: {},
-  _exprCache:{},
-  _running: false,
   _protoInheritCache: ['use', 'directive'] ,
   __after__: function(supr, o) {
 
@@ -707,6 +709,7 @@ _.extend(Regular, {
     this.__after__ = supr.__after__;
 
     if(o.name) Regular.component(o.name, this);
+    // this.prototype.template = dom.initTemplate(o)
     if(template = o.template){
       var node, name;
       if( typeof template === 'string' && template.length < 20 && ( node = dom.find( template )) ){
@@ -774,6 +777,18 @@ _.extend(Regular, {
     fn(this, Regular);
     return this;
   },
+  // config the Regularjs's global
+  config: function(name, value){
+    var needGenLexer = false;
+    if(typeof name === "object"){
+      for(var i in name){
+        // if you config
+        if( i ==="END" || i==='BEGIN' )  needGenLexer = true;
+        config[i] = name[i];
+      }
+    }
+    if(needGenLexer) Lexer.setup();
+  },
   expression: parse.expression,
   parse: parse.parse,
 
@@ -814,6 +829,7 @@ _.extend(Regular, {
     })
     return self;
   }
+
 });
 
 extend(Regular);
@@ -932,14 +948,30 @@ Regular.implement({
   $get: function(expr){
     return parse.expression(expr).get(this);
   },
-  $inject: function(node, position){
+  $inject: function(node, position, options){
     var fragment = combine.node(this);
+
+    if(node === false) {
+      if(!this._fragContainer)  this._fragContainer = dom.fragment();
+      return this.$inject(this._fragContainer);
+    }
     if(typeof node === 'string') node = dom.find(node);
     if(!node) throw 'injected node is not found';
     if(!fragment) return;
     dom.inject(fragment, node, position);
     this.$emit("$inject", node);
     this.parentNode = Array.isArray(fragment)? fragment[0].parentNode: fragment.parentNode;
+    return this;
+  },
+  $mute: function(isMute){
+
+    isMute = !!isMute;
+
+    var needupdate = isMute === false && this._mute;
+
+    this._mute = !!isMute;
+
+    if(needupdate) this.$update();
     return this;
   },
   // private bind logic
@@ -1840,6 +1872,7 @@ walkers.text = function(ast){
 }
 
 
+
 var eventReg = /^on-(.+)$/
 
 /**
@@ -1946,6 +1979,8 @@ walkers.element = function(ast){
     destroy: function(first){
       if( first ){
         animate.remove( element, group? group.destroy.bind( group ): _.noop );
+      }else if(group) {
+        group.destroy();
       }
       // destroy ref
       if( destroies.length ) {
@@ -2392,14 +2427,14 @@ function Event(ev){
 _.extend(Event.prototype, {
   immediateStop: _.isFalse,
   stop: function(){
-    this.preventDefault().stopPropgation();
+    this.preventDefault().stopPropagation();
   },
   preventDefault: function(){
     if (this.event.preventDefault) this.event.preventDefault();
     else this.event.returnValue = false;
     return this;
   },
-  stopPropgation: function(){
+  stopPropagation: function(){
     if (this.event.stopPropagation) this.event.stopPropagation();
     else this.event.cancelBubble = true;
     return this;
@@ -2476,8 +2511,26 @@ module.exports = Group;
 
 
 });
+require.register("regularjs/src/config.js", function(exports, require, module){
+
+module.exports = {
+'BEGIN': '{{',
+'END': '}}'
+}
+});
 require.register("regularjs/src/parser/Lexer.js", function(exports, require, module){
 var _ = require("../util.js");
+var config = require("../config.js");
+
+// some custom tag  will conflict with the Lexer progress
+var conflictTag = {"}": "{", "]": "["}, map1, map2;
+// some macro for lexer
+var macro = {
+  'NAME': /(?:[:_A-Za-z][-\.:_0-9A-Za-z]*)/,
+  'IDENT': /[\$_A-Za-z][_0-9A-Za-z\$]*/,
+  'SPACE': /[\r\n\f ]/
+}
+
 
 var test = /a|(b)/.exec("a");
 var testSubCapure = test && test[1] === undefined? 
@@ -2491,6 +2544,12 @@ function wrapHander(handler){
 }
 
 function Lexer(input, opts){
+  if(conflictTag[config.END]){
+    this.markStart = conflictTag[config.END];
+    this.markEnd = config.END;
+  }
+
+
   this.input = (input||"").trim();
   this.opts = opts || {};
   this.map = this.opts.mode !== 2?  map1: map2;
@@ -2505,7 +2564,7 @@ lo.lex = function(str){
   str = (str || this.input).trim();
   var tokens = [], split, test,mlen, token, state;
   this.input = str, 
-    
+  this.marks = 0;
   // init the pos index
   this.index=0;
   var i = 0;
@@ -2564,47 +2623,77 @@ lo._process = function(args, split,str){
   }
   return token;
 }
-/**
- * 进入某种状态
- * @param  {[type]} state [description]
- * @return {[type]}
- */
 lo.enter = function(state){
-  // 如果有多层状态则 则这里用一个栈来标示，
-  // 个人目前还没有遇到词法解析阶段需要多层判断的场景
   this.states.push(state)
   return this;
 }
-/**
- * 退出
- * @return {[type]}
- */
 
 lo.state = function(){
   var states = this.states;
   return states[states.length-1];
 }
 
-/**
- * 退出某种状态
- * @return {[type]}
- */
 lo.leave = function(state){
   var states = this.states;
   if(!state || states[states.length-1] === state) states.pop()
 }
 
-var macro = {
-  'BEGIN': '{{',
-  'END': '}}',
-  //http://www.w3.org/TR/REC-xml/#NT-Name
-  // ":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
-  // 暂时不这么严格，提取合适范围
-  // 'NAME': /(?:[:_A-Za-z\xC0-\u2FEF\u3001-\uD7FF\uF900-\uFFFF][-\.:_0-9A-Za-z\xB7\xC0-\u2FEF\u3001-\uD7FF\uF900-\uFFFF]*)/
-  'NAME': /(?:[:_A-Za-z][-\.:_0-9A-Za-z]*)/,
-  'IDENT': /[\$_A-Za-z][_0-9A-Za-z\$]*/,
-  'SPACE': /[\r\n\f ]/
+
+Lexer.setup = function(){
+  macro.END = config.END;
+  macro.BEGIN = config.BEGIN;
+  //
+  map1 = genMap([
+    // INIT
+    rules.ENTER_JST,
+    rules.ENTER_TAG,
+    rules.TEXT,
+
+    //TAG
+    rules.TAG_NAME,
+    rules.TAG_OPEN,
+    rules.TAG_CLOSE,
+    rules.TAG_PUNCHOR,
+    rules.TAG_ENTER_JST,
+    rules.TAG_UNQ_VALUE,
+    rules.TAG_STRING,
+    rules.TAG_SPACE,
+    rules.TAG_COMMENT,
+
+    // JST
+    rules.JST_OPEN,
+    rules.JST_CLOSE,
+    rules.JST_COMMENT,
+    rules.JST_EXPR_OPEN,
+    rules.JST_IDENT,
+    rules.JST_SPACE,
+    rules.JST_LEAVE,
+    rules.JST_NUMBER,
+    rules.JST_PUNCHOR,
+    rules.JST_STRING,
+    rules.JST_COMMENT
+    ])
+
+  // ignored the tag-relative token
+  map2 = genMap([
+    // INIT no < restrict
+    rules.ENTER_JST2,
+    rules.TEXT,
+    // JST
+    rules.JST_COMMENT,
+    rules.JST_OPEN,
+    rules.JST_CLOSE,
+    rules.JST_EXPR_OPEN,
+    rules.JST_IDENT,
+    rules.JST_SPACE,
+    rules.JST_LEAVE,
+    rules.JST_NUMBER,
+    rules.JST_PUNCHOR,
+    rules.JST_STRING,
+    rules.JST_COMMENT
+    ])
 }
+
 
 function genMap(rules){
   var rule, map = {}, sign;
@@ -2652,9 +2741,6 @@ function setup(map){
   return map;
 }
 
-/**
- * build the mode 1 and mode 2‘s tokenizer
- */
 var rules = {
 
   // 1. INIT
@@ -2682,7 +2768,7 @@ var rules = {
   // 2. TAG
   // --------------------
   TAG_NAME: [/{NAME}/, 'NAME', 'TAG'],
-  TAG_UNQ_VALUE: [/[^&"'=><`\r\n\f ]+/, 'UNQ', 'TAG'],
+  TAG_UNQ_VALUE: [/[^\{}&"'=><`\r\n\f ]+/, 'UNQ', 'TAG'],
 
   TAG_OPEN: [/<({NAME})\s*/, function(all, one){
     return {type: 'TAG_OPEN', value: one}
@@ -2721,11 +2807,16 @@ var rules = {
     }
   }, 'JST'],
   JST_LEAVE: [/{END}/, function(){
-    this.leave('JST');
-    return {type: 'END'}
+    this.firstEnterStart = false;
+    if(!this.markEnd || !this.marks ){
+      this.leave('JST');
+      return {type: 'END'}
+    }else{
+      this.marks--;
+      return {type: this.markEnd, value: this.markEnd}
+    }
   }, 'JST'],
-
-  JST_CLOSE: [/{BEGIN}\s*\/\s*({IDENT})\s*{END}/, function(all, one){
+  JST_CLOSE: [/{BEGIN}\s*\/({IDENT})\s*{END}/, function(all, one){
     this.leave('JST');
     return {
       type: 'CLOSE',
@@ -2736,11 +2827,20 @@ var rules = {
     this.leave();
   }, 'JST'],
   JST_EXPR_OPEN: ['{BEGIN}',function(all, one){
-    var escape = one === '=';
+    if(all === this.markStart){
+      if(this.firstEnterStart){
+        this.marks++
+        this.firstEnterStart = false;
+        return { type: this.markStart, value: this.markStart };
+      }else{
+        this.firstEnterStart = true;
+      }
+    }
     return {
       type: 'EXPR_OPEN',
-      escape: escape
+      escape: false
     }
+
   }, 'JST'],
   JST_IDENT: ['{IDENT}', 'IDENT', 'JST'],
   JST_SPACE: [/[ \r\n\f]+/, null, 'JST'],
@@ -2756,56 +2856,9 @@ var rules = {
   }, 'JST']
 }
 
-//
-var map1 = genMap([
-  // INIT
-  rules.ENTER_JST,
-  rules.ENTER_TAG,
-  rules.TEXT,
 
-  //TAG
-  rules.TAG_NAME,
-  rules.TAG_OPEN,
-  rules.TAG_CLOSE,
-  rules.TAG_PUNCHOR,
-  rules.TAG_ENTER_JST,
-  rules.TAG_UNQ_VALUE,
-  rules.TAG_STRING,
-  rules.TAG_SPACE,
-  rules.TAG_COMMENT,
-
-  // JST
-  rules.JST_OPEN,
-  rules.JST_CLOSE,
-  rules.JST_COMMENT,
-  rules.JST_EXPR_OPEN,
-  rules.JST_IDENT,
-  rules.JST_SPACE,
-  rules.JST_LEAVE,
-  rules.JST_NUMBER,
-  rules.JST_PUNCHOR,
-  rules.JST_STRING,
-  rules.JST_COMMENT
-  ])
-
-// ignored the tag-relative token
-var map2 = genMap([
-  // INIT no < restrict
-  rules.ENTER_JST2,
-  rules.TEXT,
-  // JST
-  rules.JST_COMMENT,
-  rules.JST_OPEN,
-  rules.JST_CLOSE,
-  rules.JST_EXPR_OPEN,
-  rules.JST_IDENT,
-  rules.JST_SPACE,
-  rules.JST_LEAVE,
-  rules.JST_NUMBER,
-  rules.JST_PUNCHOR,
-  rules.JST_STRING,
-  rules.JST_COMMENT
-  ])
+// setup when first config
+Lexer.setup();
 
 
 
@@ -2872,6 +2925,8 @@ module.exports = {
 });
 require.register("regularjs/src/parser/Parser.js", function(exports, require, module){
 var _ = require("../util.js");
+
+var config = require("../config.js");
 var node = require("./node.js");
 var Lexer = require("./Lexer.js");
 var varName = _.varName;
@@ -3063,7 +3118,7 @@ op.attvalue = function(){
     case "STRING":
       this.next();
       var value = ll.value;
-      if(~value.indexOf('{{')){
+      if(~value.indexOf(config.BEGIN) && ~value.indexOf(config.END)){
         var constant = true;
         var parsed = new Parser(value, { mode: 2 }).parse();
         if(parsed.length === 1 && parsed[0].type === 'expression') return parsed[0];
@@ -3169,7 +3224,7 @@ op.list = function(){
       container.push(this.statement());
     }
   }
-  if(ll.value !== 'list') this.error('expect ' + '{{/list}} got ' + '{{/' + ll.value + '}}', ll.pos );
+  if(ll.value !== 'list') this.error('expect ' + 'list got ' + '/' + ll.value + ' ', ll.pos );
   return node.list(sequence, variable, consequent, alternate);
 }
 
@@ -3498,12 +3553,17 @@ op.object = function(){
 // [ assign[,assign]*]
 op.array = function(){
   var code = [this.match('[').type], item;
-  while(item = this.assign()){
-    code.push(item.get);
-    if(this.eat(',')) code.push(",");
-    else break;
+  if( this.eat("]") ){
+
+     code.push("]");
+  } else {
+    while(item = this.assign()){
+      code.push(item.get);
+      if(this.eat(',')) code.push(",");
+      else break;
+    }
+    code.push(this.match(']').type);
   }
-  code.push(this.match(']').type);
   return {get: code.join("")};
 }
 
@@ -3564,10 +3624,13 @@ function process( what, o, supro ) {
   }
 }
 
+// if the property is ["events", "data", "computed"] , we should merge them
+var merged = ["events", "data", "computed"], mlen = merged.length;
 module.exports = function extend(o){
   o = o || {};
   var supr = this, proto,
     supro = supr && supr.prototype || {};
+
   if(typeof o === 'function'){
     proto = o.prototype;
     o.implement = implement;
@@ -3582,6 +3645,17 @@ module.exports = function extend(o){
   proto = _.createProto(fn, supro);
 
   function implement(o){
+    // we need merge the merged property
+    var len = mlen;
+    for(;len--;){
+      var prop = merged[len];
+      if(o.hasOwnProperty(prop) && proto.hasOwnProperty(prop)){
+        _.extend(proto[prop], o[prop], true) 
+        delete o[prop];
+      }
+    }
+
+
     process(proto, o, supro); 
     return this;
   }
@@ -3789,7 +3863,7 @@ var methods = {
    */
 
   $digest: function(){
-    if(this.$phase === 'digest') return;
+    if(this.$phase === 'digest' || this._mute) return;
     this.$phase = 'digest';
     var dirty = false, n =0;
     while(dirty = this._digest()){
@@ -4817,6 +4891,7 @@ function initRadio(elem, parsed){
   this.$watch(parsed, function( newValue ){
     if(inProgress) return;
     if(newValue == elem.value) elem.checked = true;
+    else elem.checked = false;
   });
 
 
@@ -5200,18 +5275,22 @@ if (typeof exports == 'object') {
 } else {
   window['Regular'] = require('regularjs');
 }})();
+
 require.config({
     paths : {
         "rgl": '../../rgl',
         "text": '../../bower_components/requirejs-text/text',
         "regularjs": '../../bower_components/regularjs/dist/regular'
+    },
+    rgl: {
+      BEGIN: '{{',
+      END: '}}'
     }
+
 });
 
 
 require(['rgl!foo.html', 'text!foo.html', 'regularjs'], function(foo, haha , Regular){
-    console.log(foo)
-    console.log(haha)
 
     var Foo = Regular.extend({
       template: foo

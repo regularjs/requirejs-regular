@@ -26,10 +26,11 @@ define('rgl',['text', 'parser'], function (text, parser) {
 
 
     function load(name, req, onLoad, config){
+        var rgl_config = config.rgl || {}
         // load text1 files with text1 plugin
         text.load(name, req, function(data,r){
             onLoad(
-              (buildMap[name] = parser.parse(data, false))
+              (buildMap[name] = parser.parse(data, {END: rgl_config.END, BEGIN: rgl_config.BEGIN, stringify: false}))
             );
         }, config);
     }
