@@ -198,8 +198,8 @@ return /******/ (function(modules) { // webpackBootstrap
 
 		
 		module.exports = {
-		'BEGIN': '{{',
-		'END': '}}'
+		'BEGIN': '{',
+		'END': '}'
 		}
 
 	/***/ },
@@ -407,7 +407,9 @@ return /******/ (function(modules) { // webpackBootstrap
 		        var body = [];
 		        parsed.forEach(function(item){
 		          if(!item.constant) constant=false;
-		          body.push(item.body || "'" + item.text + "'");
+		          // silent the mutiple inteplation
+		          body.push( item.body?  
+		            "(function(){try{return " + item.body + "}catch(e){return ''}})()" : "'" + item.text + "'");
 		        });
 		        body = "[" + body.join(",") + "].join('')";
 		        value = node.expression(body, null, constant);
@@ -698,6 +700,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		op.member = function(base, last, pathes){
 		  var ll, path;
 
+
 		  var onlySimpleAccessor = false;
 		  if(!base){ //first
 		    path = this.primary();
@@ -706,7 +709,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		      pathes = [];
 		      pathes.push( path );
 		      last = path;
-		      base = ctxName + "._sg_('" + path + "', " + varName + "['" + path + "'])";
+		      base = ctxName + "._sg_('" + path + "', " + varName + ")";
 		      onlySimpleAccessor = true;
 		    }else{ //Primative Type
 		      if(path.get === 'this'){
@@ -904,12 +907,14 @@ return /******/ (function(modules) { // webpackBootstrap
 		    this.markEnd = config.END;
 		  }
 
-
 		  this.input = (input||"").trim();
 		  this.opts = opts || {};
 		  this.map = this.opts.mode !== 2?  map1: map2;
 		  this.states = ["INIT"];
-		  if(this.opts.state) this.states.push( this.opts.state );
+		  if(opts && opts.expression){
+		     this.states.push("JST");
+		     this.expression = true;
+		  }
 		}
 
 		var lo = Lexer.prototype
@@ -1161,9 +1166,10 @@ return /******/ (function(modules) { // webpackBootstrap
 		      value: name
 		    }
 		  }, 'JST'],
-		  JST_LEAVE: [/{END}/, function(){
-		    this.firstEnterStart = false;
+		  JST_LEAVE: [/{END}/, function(all){
+		    if(this.markEnd === all && this.expression) return {type: this.markEnd, value: this.markEnd};
 		    if(!this.markEnd || !this.marks ){
+		      this.firstEnterStart = false;
 		      this.leave('JST');
 		      return {type: 'END'}
 		    }else{
@@ -1183,7 +1189,8 @@ return /******/ (function(modules) { // webpackBootstrap
 		  }, 'JST'],
 		  JST_EXPR_OPEN: ['{BEGIN}',function(all, one){
 		    if(all === this.markStart){
-		      if(this.firstEnterStart){
+		      if(this.expression) return { type: this.markStart, value: this.markStart };
+		      if(this.firstEnterStart || this.marks){
 		        this.marks++
 		        this.firstEnterStart = false;
 		        return { type: this.markStart, value: this.markStart };
@@ -1674,7 +1681,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		_.touchExpression = function(expr){
 		  if(expr.type === 'expression'){
 		    if(!expr.get){
-		      expr.get = new Function("context", prefix + "return (" + expr.body + ")");
+		      expr.get = new Function("context", prefix + "try{return (" + expr.body + ")}catch(e){return undefined}");
 		      expr.body = null;
 		      if(expr.setbody){
 		        expr.set = function(ctx, value){

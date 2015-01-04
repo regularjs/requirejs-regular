@@ -1,6 +1,6 @@
 {
   "name": "requirejs-regular",
-  "version": "0.1.2",
+  "version": "0.3.0-pre",
   "main": "rgl.js",
   "scripts": [
     "rgl.js"
