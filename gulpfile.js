@@ -6,7 +6,7 @@ var spawn = require('child_process').spawn;
 var pkg;
 
 
-gulp.task('pack', function(done) {
+gulp.task('build', function(done) {
   webpack({
       entry: "./src/index.js",
       output: {
@@ -30,10 +30,10 @@ gulp.task('pack', function(done) {
   })
 });
 
-gulp.task("default",["pack"])
+gulp.task("default",["build"])
 
 gulp.task("dev", function(){
-  gulp.watch(['component.json', 'src/index.js'], ['pack'])
+  gulp.watch(['component.json', 'src/index.js'], ['build'])
   // var puer = spawn('puer', ["--no-reload"], {})
   // puer.stdout.on('data', function (data) {
   //   console.log(""+ data);
