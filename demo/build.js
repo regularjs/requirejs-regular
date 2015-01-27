@@ -3,7 +3,7 @@ var requirejs = require('requirejs');
 
 requirejs.optimize({
     //stubModules can be used to remove unneeded plugins after build
-    stubModules : ['rgl'],
+    stubModules : ['rgl', 'text'],
     mainConfigFile : 'scripts/main.js',
     baseUrl : 'scripts',
     name : 'main',

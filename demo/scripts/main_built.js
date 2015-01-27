@@ -1,404 +1,14 @@
 define('rgl',{load: function(id){throw new Error("Dynamic load not allowed: " + id);}});
 
-define("rgl!foo.html", function(){ return [{"type":"element","tag":"h2","attrs":[],"children":[{"type":"expression","body":"_c_._sg_('message', _d_['message'])","constant":false,"setbody":"_c_._ss_('message',_p_,_d_, '=')"}]}] });
+define("rgl!foo.html", function(){ return [{"type":"element","tag":"h2","attrs":[],"children":[{"type":"expression","body":"_c_._sg_('message', _d_, 1)","constant":false,"setbody":"_c_._ss_('message',_p_,_d_, '=', 1)"}]}] });
 
-/**
- * @license RequireJS text 2.0.12 Copyright (c) 2010-2014, The Dojo Foundation All Rights Reserved.
- * Available via the MIT or new BSD license.
- * see: http://github.com/requirejs/text for details
- */
-/*jslint regexp: true */
-/*global require, XMLHttpRequest, ActiveXObject,
-  define, window, process, Packages,
-  java, location, Components, FileUtils */
-
-define('text',['module'], function (module) {
-    
-
-    var text, fs, Cc, Ci, xpcIsWindows,
-        progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
-        xmlRegExp = /^\s*<\?xml(\s)+version=[\'\"](\d)*.(\d)*[\'\"](\s)*\?>/im,
-        bodyRegExp = /<body[^>]*>\s*([\s\S]+)\s*<\/body>/im,
-        hasLocation = typeof location !== 'undefined' && location.href,
-        defaultProtocol = hasLocation && location.protocol && location.protocol.replace(/\:/, ''),
-        defaultHostName = hasLocation && location.hostname,
-        defaultPort = hasLocation && (location.port || undefined),
-        buildMap = {},
-        masterConfig = (module.config && module.config()) || {};
-
-    text = {
-        version: '2.0.12',
-
-        strip: function (content) {
-            //Strips <?xml ...?> declarations so that external SVG and XML
-            //documents can be added to a document without worry. Also, if the string
-            //is an HTML document, only the part inside the body tag is returned.
-            if (content) {
-                content = content.replace(xmlRegExp, "");
-                var matches = content.match(bodyRegExp);
-                if (matches) {
-                    content = matches[1];
-                }
-            } else {
-                content = "";
-            }
-            return content;
-        },
-
-        jsEscape: function (content) {
-            return content.replace(/(['\\])/g, '\\$1')
-                .replace(/[\f]/g, "\\f")
-                .replace(/[\b]/g, "\\b")
-                .replace(/[\n]/g, "\\n")
-                .replace(/[\t]/g, "\\t")
-                .replace(/[\r]/g, "\\r")
-                .replace(/[\u2028]/g, "\\u2028")
-                .replace(/[\u2029]/g, "\\u2029");
-        },
-
-        createXhr: masterConfig.createXhr || function () {
-            //Would love to dump the ActiveX crap in here. Need IE 6 to die first.
-            var xhr, i, progId;
-            if (typeof XMLHttpRequest !== "undefined") {
-                return new XMLHttpRequest();
-            } else if (typeof ActiveXObject !== "undefined") {
-                for (i = 0; i < 3; i += 1) {
-                    progId = progIds[i];
-                    try {
-                        xhr = new ActiveXObject(progId);
-                    } catch (e) {}
-
-                    if (xhr) {
-                        progIds = [progId];  // so faster next time
-                        break;
-                    }
-                }
-            }
-
-            return xhr;
-        },
-
-        /**
-         * Parses a resource name into its component parts. Resource names
-         * look like: module/name.ext!strip, where the !strip part is
-         * optional.
-         * @param {String} name the resource name
-         * @returns {Object} with properties "moduleName", "ext" and "strip"
-         * where strip is a boolean.
-         */
-        parseName: function (name) {
-            var modName, ext, temp,
-                strip = false,
-                index = name.indexOf("."),
-                isRelative = name.indexOf('./') === 0 ||
-                             name.indexOf('../') === 0;
-
-            if (index !== -1 && (!isRelative || index > 1)) {
-                modName = name.substring(0, index);
-                ext = name.substring(index + 1, name.length);
-            } else {
-                modName = name;
-            }
-
-            temp = ext || modName;
-            index = temp.indexOf("!");
-            if (index !== -1) {
-                //Pull off the strip arg.
-                strip = temp.substring(index + 1) === "strip";
-                temp = temp.substring(0, index);
-                if (ext) {
-                    ext = temp;
-                } else {
-                    modName = temp;
-                }
-            }
-
-            return {
-                moduleName: modName,
-                ext: ext,
-                strip: strip
-            };
-        },
-
-        xdRegExp: /^((\w+)\:)?\/\/([^\/\\]+)/,
-
-        /**
-         * Is an URL on another domain. Only works for browser use, returns
-         * false in non-browser environments. Only used to know if an
-         * optimized .js version of a text resource should be loaded
-         * instead.
-         * @param {String} url
-         * @returns Boolean
-         */
-        useXhr: function (url, protocol, hostname, port) {
-            var uProtocol, uHostName, uPort,
-                match = text.xdRegExp.exec(url);
-            if (!match) {
-                return true;
-            }
-            uProtocol = match[2];
-            uHostName = match[3];
-
-            uHostName = uHostName.split(':');
-            uPort = uHostName[1];
-            uHostName = uHostName[0];
-
-            return (!uProtocol || uProtocol === protocol) &&
-                   (!uHostName || uHostName.toLowerCase() === hostname.toLowerCase()) &&
-                   ((!uPort && !uHostName) || uPort === port);
-        },
-
-        finishLoad: function (name, strip, content, onLoad) {
-            content = strip ? text.strip(content) : content;
-            if (masterConfig.isBuild) {
-                buildMap[name] = content;
-            }
-            onLoad(content);
-        },
-
-        load: function (name, req, onLoad, config) {
-            //Name has format: some.module.filext!strip
-            //The strip part is optional.
-            //if strip is present, then that means only get the string contents
-            //inside a body tag in an HTML string. For XML/SVG content it means
-            //removing the <?xml ...?> declarations so the content can be inserted
-            //into the current doc without problems.
-
-            // Do not bother with the work if a build and text will
-            // not be inlined.
-            if (config && config.isBuild && !config.inlineText) {
-                onLoad();
-                return;
-            }
-
-            masterConfig.isBuild = config && config.isBuild;
-
-            var parsed = text.parseName(name),
-                nonStripName = parsed.moduleName +
-                    (parsed.ext ? '.' + parsed.ext : ''),
-                url = req.toUrl(nonStripName),
-                useXhr = (masterConfig.useXhr) ||
-                         text.useXhr;
-
-            // Do not load if it is an empty: url
-            if (url.indexOf('empty:') === 0) {
-                onLoad();
-                return;
-            }
-
-            //Load the text. Use XHR if possible and in a browser.
-            if (!hasLocation || useXhr(url, defaultProtocol, defaultHostName, defaultPort)) {
-                text.get(url, function (content) {
-                    text.finishLoad(name, parsed.strip, content, onLoad);
-                }, function (err) {
-                    if (onLoad.error) {
-                        onLoad.error(err);
-                    }
-                });
-            } else {
-                //Need to fetch the resource across domains. Assume
-                //the resource has been optimized into a JS module. Fetch
-                //by the module name + extension, but do not include the
-                //!strip part to avoid file system issues.
-                req([nonStripName], function (content) {
-                    text.finishLoad(parsed.moduleName + '.' + parsed.ext,
-                                    parsed.strip, content, onLoad);
-                });
-            }
-        },
-
-        write: function (pluginName, moduleName, write, config) {
-            if (buildMap.hasOwnProperty(moduleName)) {
-                var content = text.jsEscape(buildMap[moduleName]);
-                write.asModule(pluginName + "!" + moduleName,
-                               "define(function () { return '" +
-                                   content +
-                               "';});\n");
-            }
-        },
-
-        writeFile: function (pluginName, moduleName, req, write, config) {
-            var parsed = text.parseName(moduleName),
-                extPart = parsed.ext ? '.' + parsed.ext : '',
-                nonStripName = parsed.moduleName + extPart,
-                //Use a '.js' file name so that it indicates it is a
-                //script that can be loaded across domains.
-                fileName = req.toUrl(parsed.moduleName + extPart) + '.js';
-
-            //Leverage own load() method to load plugin value, but only
-            //write out values that do not have the strip argument,
-            //to avoid any potential issues with ! in file names.
-            text.load(nonStripName, req, function (value) {
-                //Use own write() method to construct full module value.
-                //But need to create shell that translates writeFile's
-                //write() to the right interface.
-                var textWrite = function (contents) {
-                    return write(fileName, contents);
-                };
-                textWrite.asModule = function (moduleName, contents) {
-                    return write.asModule(moduleName, fileName, contents);
-                };
-
-                text.write(pluginName, nonStripName, textWrite, config);
-            }, config);
-        }
-    };
-
-    if (masterConfig.env === 'node' || (!masterConfig.env &&
-            typeof process !== "undefined" &&
-            process.versions &&
-            !!process.versions.node &&
-            !process.versions['node-webkit'])) {
-        //Using special require.nodeRequire, something added by r.js.
-        fs = require.nodeRequire('fs');
-
-        text.get = function (url, callback, errback) {
-            try {
-                var file = fs.readFileSync(url, 'utf8');
-                //Remove BOM (Byte Mark Order) from utf8 files if it is there.
-                if (file.indexOf('\uFEFF') === 0) {
-                    file = file.substring(1);
-                }
-                callback(file);
-            } catch (e) {
-                if (errback) {
-                    errback(e);
-                }
-            }
-        };
-    } else if (masterConfig.env === 'xhr' || (!masterConfig.env &&
-            text.createXhr())) {
-        text.get = function (url, callback, errback, headers) {
-            var xhr = text.createXhr(), header;
-            xhr.open('GET', url, true);
-
-            //Allow plugins direct access to xhr headers
-            if (headers) {
-                for (header in headers) {
-                    if (headers.hasOwnProperty(header)) {
-                        xhr.setRequestHeader(header.toLowerCase(), headers[header]);
-                    }
-                }
-            }
-
-            //Allow overrides specified in config
-            if (masterConfig.onXhr) {
-                masterConfig.onXhr(xhr, url);
-            }
-
-            xhr.onreadystatechange = function (evt) {
-                var status, err;
-                //Do not explicitly handle errors, those should be
-                //visible via console output in the browser.
-                if (xhr.readyState === 4) {
-                    status = xhr.status || 0;
-                    if (status > 399 && status < 600) {
-                        //An http 4xx or 5xx error. Signal an error.
-                        err = new Error(url + ' HTTP status: ' + status);
-                        err.xhr = xhr;
-                        if (errback) {
-                            errback(err);
-                        }
-                    } else {
-                        callback(xhr.responseText);
-                    }
-
-                    if (masterConfig.onXhrComplete) {
-                        masterConfig.onXhrComplete(xhr, url);
-                    }
-                }
-            };
-            xhr.send(null);
-        };
-    } else if (masterConfig.env === 'rhino' || (!masterConfig.env &&
-            typeof Packages !== 'undefined' && typeof java !== 'undefined')) {
-        //Why Java, why is this so awkward?
-        text.get = function (url, callback) {
-            var stringBuffer, line,
-                encoding = "utf-8",
-                file = new java.io.File(url),
-                lineSeparator = java.lang.System.getProperty("line.separator"),
-                input = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(file), encoding)),
-                content = '';
-            try {
-                stringBuffer = new java.lang.StringBuffer();
-                line = input.readLine();
-
-                // Byte Order Mark (BOM) - The Unicode Standard, version 3.0, page 324
-                // http://www.unicode.org/faq/utf_bom.html
-
-                // Note that when we use utf-8, the BOM should appear as "EF BB BF", but it doesn't due to this bug in the JDK:
-                // http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4508058
-                if (line && line.length() && line.charAt(0) === 0xfeff) {
-                    // Eat the BOM, since we've already found the encoding on this file,
-                    // and we plan to concatenating this buffer with others; the BOM should
-                    // only appear at the top of a file.
-                    line = line.substring(1);
-                }
-
-                if (line !== null) {
-                    stringBuffer.append(line);
-                }
-
-                while ((line = input.readLine()) !== null) {
-                    stringBuffer.append(lineSeparator);
-                    stringBuffer.append(line);
-                }
-                //Make sure we return a JavaScript string and not a Java string.
-                content = String(stringBuffer.toString()); //String
-            } finally {
-                input.close();
-            }
-            callback(content);
-        };
-    } else if (masterConfig.env === 'xpconnect' || (!masterConfig.env &&
-            typeof Components !== 'undefined' && Components.classes &&
-            Components.interfaces)) {
-        //Avert your gaze!
-        Cc = Components.classes;
-        Ci = Components.interfaces;
-        Components.utils['import']('resource://gre/modules/FileUtils.jsm');
-        xpcIsWindows = ('@mozilla.org/windows-registry-key;1' in Cc);
-
-        text.get = function (url, callback) {
-            var inStream, convertStream, fileObj,
-                readData = {};
-
-            if (xpcIsWindows) {
-                url = url.replace(/\//g, '\\');
-            }
-
-            fileObj = new FileUtils.File(url);
-
-            //XPCOM, you so crazy
-            try {
-                inStream = Cc['@mozilla.org/network/file-input-stream;1']
-                           .createInstance(Ci.nsIFileInputStream);
-                inStream.init(fileObj, 1, 0, false);
-
-                convertStream = Cc['@mozilla.org/intl/converter-input-stream;1']
-                                .createInstance(Ci.nsIConverterInputStream);
-                convertStream.init(inStream, "utf-8", inStream.available(),
-                Ci.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
-
-                convertStream.readString(inStream.available(), readData);
-                convertStream.close();
-                inStream.close();
-                callback(readData.value);
-            } catch (e) {
-                throw new Error((fileObj && fileObj.path || '') + ': ' + e);
-            }
-        };
-    }
-    return text;
-});
-
+define('text',{load: function(id){throw new Error("Dynamic load not allowed: " + id);}});
 
 define('text!foo.html',[],function () { return '<h2>{{message}}</h2>\n';});
 
 /**
 @author	leeluolee
-@version	0.2.15-alpha
+@version	0.3.0
 @homepage	http://regularjs.github.io
 */
 ;(function(){
@@ -619,6 +229,7 @@ var Event = require('./helper/event.js');
 var combine = require('./helper/combine.js');
 var Watcher = require('./helper/watcher.js');
 var parse = require('./helper/parse.js');
+var filter = require('./helper/filter.js');
 var doc = typeof document==='undefined'? {} : document;
 var env = require('./env.js');
 
@@ -636,7 +247,6 @@ var Regular = function(options){
   env.isRunning = true;
   var node, template;
 
-  console.log(this)
   options = options || {};
   options.data = options.data || {};
   options.computed = options.computed || {};
@@ -654,8 +264,8 @@ var Regular = function(options){
 
   template = this.template;
 
-  // template is a string (len < 40). we will find it container first
-  if((typeof template === 'string' && template.length < 40) && (node = dom.find(template))) {
+  // template is a string (len < 16). we will find it container first
+  if((typeof template === 'string' && template.length < 16) && (node = dom.find(template))) {
     template = node.innerHTML;
   }
   // if template is a xml
@@ -702,17 +312,18 @@ _.extend(Regular, {
   // private data stuff
   _directives: { __regexp__:[] },
   _plugins: {},
-  _protoInheritCache: ['use', 'directive'] ,
+  _protoInheritCache: [ 'directive', 'use'] ,
   __after__: function(supr, o) {
 
     var template;
     this.__after__ = supr.__after__;
 
+    // use name make the component global
     if(o.name) Regular.component(o.name, this);
     // this.prototype.template = dom.initTemplate(o)
     if(template = o.template){
       var node, name;
-      if( typeof template === 'string' && template.length < 20 && ( node = dom.find( template )) ){
+      if( typeof template === 'string' && template.length < 16 && ( node = dom.find( template )) ){
         template = node.innerHTML;
         if(name = dom.attr(node, 'name')) Regular.component(name, this);
       }
@@ -795,13 +406,14 @@ _.extend(Regular, {
   Parser: Parser,
   Lexer: Lexer,
 
-  _addProtoInheritCache: function(name){
+  _addProtoInheritCache: function(name, transform){
     if( Array.isArray( name ) ){
       return name.forEach(Regular._addProtoInheritCache);
     }
     var cacheKey = "_" + name + "s"
     Regular._protoInheritCache.push(name)
     Regular[cacheKey] = {};
+    if(Regular[name]) return;
     Regular[name] = function(key, cfg){
       var cache = this[cacheKey];
 
@@ -812,7 +424,7 @@ _.extend(Regular, {
         return this;
       }
       if(cfg == null) return cache[key];
-      cache[key] = cfg;
+      cache[key] = transform? transform(cfg) : cfg;
       return this;
     }
   },
@@ -834,7 +446,11 @@ _.extend(Regular, {
 
 extend(Regular);
 
-Regular._addProtoInheritCache(["filter", "component"])
+Regular._addProtoInheritCache("component")
+
+Regular._addProtoInheritCache("filter", function(cfg){
+  return typeof cfg === "function"? {get: cfg}: cfg;
+})
 
 
 Event.mixTo(Regular);
@@ -945,9 +561,6 @@ Regular.implement({
   $unbind: function(){
     // todo
   },
-  $get: function(expr){
-    return parse.expression(expr).get(this);
-  },
   $inject: function(node, position, options){
     var fragment = combine.node(this);
 
@@ -957,7 +570,7 @@ Regular.implement({
     }
     if(typeof node === 'string') node = dom.find(node);
     if(!node) throw 'injected node is not found';
-    if(!fragment) return;
+    if(!fragment) return this;
     dom.inject(fragment, node, position);
     this.$emit("$inject", node);
     this.parentNode = Array.isArray(fragment)? fragment[0].parentNode: fragment.parentNode;
@@ -1043,28 +656,30 @@ Regular.implement({
   _f_: function(name){
     var Component = this.constructor;
     var filter = Component.filter(name);
-    if(typeof filter !== 'function') throw 'filter ' + name + 'is undefined';
+    if(!filter) throw 'filter ' + name + ' is undefined';
     return filter;
   },
   // simple accessor get
-  _sg_:function(path, defaults){
-    var computed = this.computed,
-      computedProperty = computed[path];
-    if(computedProperty){
-      if(computedProperty.get)  return computedProperty.get(this);
-      else _.log("the computed '" + path + "' don't define the get function,  get data."+path + " altnately", "error")
+  _sg_:function(path, defaults, needComputed){
+    if(needComputed){
+      var computed = this.computed,
+        computedProperty = computed[path];
+      if(computedProperty){
+        if(computedProperty.get)  return computedProperty.get(this);
+        else _.log("the computed '" + path + "' don't define the get function,  get data."+path + " altnately", "error")
+      }
     }
-    return defaults;
+    if(typeof defaults === "undefined" || typeof path == "undefined" ) return undefined;
+    return defaults[path];
 
   },
   // simple accessor set
-  _ss_:function(path, value, data, op){
+  _ss_:function(path, value, data , op, computed){
     var computed = this.computed,
-      op = op || "=",
-      computedProperty = computed[path],
-      prev;
+      op = op || "=", prev, 
+      computedProperty = computed? computed[path]:null;
 
-    if(op!== '='){
+    if(op !== '='){
       prev = computedProperty? computedProperty.get(this): data[path];
       switch(op){
         case "+=":
@@ -1083,8 +698,7 @@ Regular.implement({
           value = prev % value;
           break;
       }
-    }  
-
+    }
     if(computedProperty) {
       if(computedProperty.set) return computedProperty.set(this, value);
       else _.log("the computed '" + path + "' don't define the set function,  assign data."+path + " altnately", "error" )
@@ -1094,7 +708,15 @@ Regular.implement({
   }
 });
 
-Regular.prototype.inject = Regular.prototype.$inject;
+Regular.prototype.inject = function(){
+  _.log("use $inject instead of inject", "error");
+  this.$inejct.apply(this, arguments);
+}
+
+
+// only one builtin filter
+
+Regular.filter(filter);
 
 module.exports = Regular;
 
@@ -1695,7 +1317,7 @@ walkers.list = function(ast){
     namespace = this.__ns__;
   // proxy Component to implement list item, so the behaviar is similar with angular;
   var Section =  Regular.extend( { 
-    template: ast.body, 
+    template: ast.body,
     $context: this.$context,
     // proxy the event to $context
     $on: this.$context.$on.bind(this.$context),
@@ -1741,9 +1363,7 @@ walkers.list = function(ast){
         data[indexName] = o;
         data[variable] = item;
 
-        //@TODO
         var section = new Section({data: data, $parent: self , namespace: namespace});
-
 
         // autolink
         var insert =  combine.last(group.get(o));
@@ -1770,9 +1390,10 @@ walkers.list = function(ast){
   return group;
 }
 
+// {#include }
 walkers.template = function(ast){
   var content = ast.content, compiled;
-  var placeholder = document.createComment('template');
+  var placeholder = document.createComment('inlcude');
   var compiled, namespace = this.__ns__;
   // var fragment = dom.fragment();
   // fragment.appendChild(placeholder);
@@ -1922,7 +1543,7 @@ walkers.element = function(ast){
     }
 
     var $body;
-    if(ast.children) $body = this.$compile(ast.children);
+    if(ast.children) $body = ast.children;
     var component = new Component({data: data, events: events, $body: $body, $parent: this, namespace: namespace});
     if(ref &&  self.$context.$refs) self.$context.$refs[ref] = component;
     for(var i = 0, len = attrs.length; i < len; i++){
@@ -1939,7 +1560,8 @@ walkers.element = function(ast){
       })
     }
     return component;
-  }else if(ast.tag === 'r-content' && this.$body){
+  }
+  else if(ast.tag === 'r-content' && this.$body){
     return this.$body;
   }
 
@@ -2075,7 +1697,7 @@ exports.transition = (function(){
 })();
 
 // whether have component in initializing
-exports.exprCache = _.cache(100);
+exports.exprCache = _.cache(1000);
 exports.isRunning = false;
 
 });
@@ -2514,8 +2136,8 @@ module.exports = Group;
 require.register("regularjs/src/config.js", function(exports, require, module){
 
 module.exports = {
-'BEGIN': '{{',
-'END': '}}'
+'BEGIN': '{',
+'END': '}'
 }
 });
 require.register("regularjs/src/parser/Lexer.js", function(exports, require, module){
@@ -2549,12 +2171,14 @@ function Lexer(input, opts){
     this.markEnd = config.END;
   }
 
-
   this.input = (input||"").trim();
   this.opts = opts || {};
   this.map = this.opts.mode !== 2?  map1: map2;
   this.states = ["INIT"];
-  if(this.opts.state) this.states.push( this.opts.state );
+  if(opts && opts.expression){
+     this.states.push("JST");
+     this.expression = true;
+  }
 }
 
 var lo = Lexer.prototype
@@ -2806,9 +2430,10 @@ var rules = {
       value: name
     }
   }, 'JST'],
-  JST_LEAVE: [/{END}/, function(){
-    this.firstEnterStart = false;
+  JST_LEAVE: [/{END}/, function(all){
+    if(this.markEnd === all && this.expression) return {type: this.markEnd, value: this.markEnd};
     if(!this.markEnd || !this.marks ){
+      this.firstEnterStart = false;
       this.leave('JST');
       return {type: 'END'}
     }else{
@@ -2828,7 +2453,8 @@ var rules = {
   }, 'JST'],
   JST_EXPR_OPEN: ['{BEGIN}',function(all, one){
     if(all === this.markStart){
-      if(this.firstEnterStart){
+      if(this.expression) return { type: this.markStart, value: this.markStart };
+      if(this.firstEnterStart || this.marks){
         this.marks++
         this.firstEnterStart = false;
         return { type: this.markStart, value: this.markStart };
@@ -2863,8 +2489,6 @@ Lexer.setup();
 
 
 module.exports = Lexer;
-
-
 
 });
 require.register("regularjs/src/parser/node.js", function(exports, require, module){
@@ -3125,7 +2749,8 @@ op.attvalue = function(){
         var body = [];
         parsed.forEach(function(item){
           if(!item.constant) constant=false;
-          body.push(item.body || "'" + item.text + "'");
+          // silent the mutiple inteplation
+            body.push(item.body || "'" + item.text + "'");        
         });
         body = "[" + body.join(",") + "].join('')";
         value = node.expression(body, null, constant);
@@ -3257,23 +2882,40 @@ op.expr = function(){
 op.filter = function(){
   var left = this.assign();
   var ll = this.eat('|');
-  var buffer, attr;
-  if(ll){
-    buffer = [
-      "(function(){", 
-          "var ", attr = "_f_", "=", left.get, ";"]
-    do{
+  var buffer = [], setBuffer, prefix,
+    attr = "_t_", 
+    set = left.set, get, 
+    tmp = "";
 
-      buffer.push(attr + " = "+ctxName+"._f_('" + this.match('IDENT').value+ "')(" + attr) ;
+  if(ll){
+    if(set) setBuffer = [];
+
+    prefix = "(function(" + attr + "){";
+
+    do{
+      tmp = attr + " = " + ctxName + "._f_('" + this.match('IDENT').value+ "' ).get.call( "+_.ctxName +"," + attr ;
       if(this.eat(':')){
-        buffer.push(", "+ this.arguments("|").join(",") + ");")
+        tmp +=", "+ this.arguments("|").join(",") + ");"
       }else{
-        buffer.push(');');
+        tmp += ');'
       }
+      buffer.push(tmp);
+      setBuffer && setBuffer.unshift( tmp.replace(" ).get.call", " ).set.call") );
 
     }while(ll = this.eat('|'));
-    buffer.push("return " + attr + "})()");
-    return this.getset(buffer.join(""));
+    buffer.push("return " + attr );
+    setBuffer && setBuffer.push("return " + attr);
+
+    get =  prefix + buffer.join("") + "})("+left.get+")";
+    // we call back to value.
+    if(setBuffer){
+      // change _ss__(name, _p_) to _s__(name, filterFn(_p_));
+      set = set.replace(_.setName, 
+        prefix + setBuffer.join("") + "})("+　_.setName　+")" );
+
+    }
+    // the set function is depend on the filter definition. if it have set method, the set will work
+    return this.getset(get, set);
   }
   return left;
 }
@@ -3413,8 +3055,9 @@ op.unary = function(){
 // member [ expression ]
 // member . ident  
 
-op.member = function(base, last, pathes){
+op.member = function(base, last, pathes, prevBase){
   var ll, path;
+
 
   var onlySimpleAccessor = false;
   if(!base){ //first
@@ -3424,7 +3067,7 @@ op.member = function(base, last, pathes){
       pathes = [];
       pathes.push( path );
       last = path;
-      base = ctxName + "._sg_('" + path + "', " + varName + "['" + path + "'])";
+      base = ctxName + "._sg_('" + path + "', " + varName + ", 1)";
       onlySimpleAccessor = true;
     }else{ //Primative Type
       if(path.get === 'this'){
@@ -3448,14 +3091,26 @@ op.member = function(base, last, pathes){
       case '.':
           // member(object, property, computed)
         var tmpName = this.match('IDENT').value;
+        prevBase = base;
+        if( this.la() !== "(" ){ 
+          base = ctxName + "._sg_('" + tmpName + "', " + base + ")";
+        }else{
           base += "['" + tmpName + "']";
-        return this.member( base, tmpName, pathes );
+        }
+        return this.member( base, tmpName, pathes,  prevBase);
       case '[':
           // member(object, property, computed)
         path = this.assign();
-        base += "[" + path.get + "]";
+        prevBase = base;
+        if( this.la() !== "(" ){ 
+        // means function call, we need throw undefined error when call function
+        // and confirm that the function call wont lose its context
+          base = ctxName + "._sg_(" + path.get + ", " + base + ")";
+        }else{
+          base += "[" + path.get + "]";
+        }
         this.match(']')
-        return this.member(base, path, pathes);
+        return this.member(base, path, pathes, prevBase);
       case '(':
         // call(callee, args)
         var args = this.arguments().join(',');
@@ -3467,8 +3122,12 @@ op.member = function(base, last, pathes){
   if( pathes && pathes.length ) this.depend.push( pathes );
   var res =  {get: base};
   if(last){
-    if(onlySimpleAccessor) res.set = ctxName + "._ss_('" + path + "'," + _.setName + "," + _.varName + ", '=')";
-    else res.set = base + '=' + _.setName;
+    res.set = ctxName + "._ss_(" + 
+        (last.get? last.get : "'"+ last + "'") + 
+        ","+ _.setName + ","+ 
+        (prevBase?prevBase:_.varName) + 
+        ", '=', "+ ( onlySimpleAccessor? 1 : 0 ) + ")";
+  
   }
   return res;
 }
@@ -3766,7 +3425,7 @@ module.exports = {
   expression: function(expr, simple){
     // @TODO cache
     if( typeof expr === 'string' && ( expr = expr.trim() ) ){
-      expr = exprCache.get( expr ) || exprCache.set( expr, new Parser( expr, { state: 'JST', mode: 2 } ).expression() )
+      expr = exprCache.get( expr ) || exprCache.set( expr, new Parser( expr, { mode: 2, expression: true } ).expression() )
     }
     if(expr) return _.touchExpression( expr );
   },
@@ -3968,7 +3627,7 @@ var methods = {
    * @param  {Whatever} value optional, when path is Function, the value is ignored
    * @return {this}     this 
    */
-  $update: function(path, value){
+  $set: function(path, value){
     if(path != null){
       var type = _.typeOf(path);
       if( type === 'string' || path.type === 'expression' ){
@@ -3978,12 +3637,16 @@ var methods = {
         path.call(this, this.data);
       }else{
         for(var i in path) {
-          if(path.hasOwnProperty(i)){
-            this.data[i] = path[i];
-          }
+          this.$set(i, path[i])
         }
       }
     }
+  },
+  $get: function(expr){
+    return parseExpression(expr).get(this);
+  },
+  $update: function(){
+    this.$set.apply(this, arguments);
     if(this.$root) this.$root.$digest()
   },
   // auto collect watchers for logic-control.
@@ -4011,7 +3674,6 @@ require.register("regularjs/src/helper/event.js", function(exports, require, mod
 // simplest event emitter 60 lines
 // ===============================
 var slice = [].slice, _ = require("../util.js");
-var buildin = ['$inject', "$init", "$destroy", "$update"];
 var API = {
     $on: function(event, fn) {
         if(typeof event === "object"){
@@ -4058,18 +3720,11 @@ var API = {
         var type = event;
 
         if(!handles) return context;
-        // @deprecated 0.3.0
-        // will be removed when completely remove the old events('destroy' 'init') support
-
-        /*@remove 0.4.0*/
-        var isBuildin = ~buildin.indexOf(type);
         if(calls = handles[type.slice(1)]){
             for (var j = 0, len = calls.length; j < len; j++) {
                 calls[j].apply(context, args)
             }
         }
-        /*/remove*/
-
         if (!(calls = handles[type])) return context;
         for (var i = 0, len = calls.length; i < len; i++) {
             calls[i].apply(context, args)
@@ -4151,6 +3806,7 @@ animate.inject = function( node, refer ,direction, callback ){
     }
     dom.inject(fragment, refer, direction);
 
+    // if all nodes is done, we call the callback
     var enterCallback = function (){
       count++;
       if( count === len ) callback();
@@ -4170,11 +3826,6 @@ animate.inject = function( node, refer ,direction, callback ){
     }else{
       callback();
     }
-    // if( node.nodeType === 1 && callback !== false ){
-    //   return startClassAnimate( node, 'r-enter', callback , 2);
-    // }
-    // ignored else
-    
   }
 }
 
@@ -4185,15 +3836,18 @@ animate.inject = function( node, refer ,direction, callback ){
  * @return {[type]}            [description]
  */
 animate.remove = function(node, callback){
-  callback = callback || _.noop;
   if(node.onleave){
     node.onleave(function(){
-      dom.remove(node);
+      removeDone(node, callback)
     })
   }else{
-    dom.remove(node) 
-    callback && callback();
+    removeDone(node, callback)
   }
+}
+
+var removeDone = function (node, callback){
+    dom.remove(node);
+    callback && callback();
 }
 
 
@@ -4203,7 +3857,6 @@ animate.startClassAnimate = function ( node, className,  callback, mode ){
   if( (!animationEnd && !transitionEnd) || env.isRunning ){
     return callback();
   }
-
 
   onceAnim = _.once(function onAnimateEnd(){
     if(tid) clearTimeout(tid);
@@ -4647,6 +4300,50 @@ var entities = {
 
 module.exports  = entities;
 });
+require.register("regularjs/src/helper/filter.js", function(exports, require, module){
+
+var f = module.exports = {};
+
+// json:  two way filter.
+//  - get: JSON.stringify
+//  - set: JSON.parse
+//  - example: title | json
+f.json = {
+  get: function( value ){
+    return typeof JSON !== 'undefined'? JSON.stringify(value): value;
+  },
+  set: function( value ){
+    return typeof JSON !== 'undefined'? JSON.parse(value) : value;
+  }
+}
+
+f.last = function(arr){
+  return arr && arr[arr.length - 1];
+}
+
+f.every = {
+  get: function(arr, key){
+    key = key || 'checked';
+    arr = arr || [];
+
+    var len = arr.length;
+    for(;len--;){
+      if( !arr[len][key] ) return false;
+    }
+    return true
+  },
+  set: function(checkAll, key, arr){
+    arr = arr || [];
+    checkAll = !!checkAll;
+
+    var len = arr.length;
+    for(;len--;){
+      arr[len][key] = checkAll;
+    }
+    return arr;
+  }
+}
+});
 require.register("regularjs/src/directive/base.js", function(exports, require, module){
 // Regular
 var _ = require("../util.js");
@@ -4773,9 +4470,7 @@ Regular.directive("r-model", function(elem, value){
 
 function initSelect( elem, parsed){
   var self = this;
-  var inProgress = false;
   this.$watch(parsed, function(newValue){
-    if(inProgress) return;
     var children = _.slice(elem.getElementsByTagName('option'))
     children.forEach(function(node, index){
       if(node.value == newValue){
@@ -4786,9 +4481,8 @@ function initSelect( elem, parsed){
 
   function handler(){
     parsed.set(self, this.value);
-    inProgress = true;
+    parsed.last = this.value;
     self.$update();
-    inProgress = false;
   }
 
   dom.on(elem, "change", handler);
@@ -4804,10 +4498,8 @@ function initSelect( elem, parsed){
 // input,textarea binding
 
 function initText(elem, parsed){
-  var inProgress = false;
   var self = this;
   this.$watch(parsed, function(newValue){
-    if(inProgress){ return; }
     if(elem.value !== newValue) elem.value = newValue == null? "": "" + newValue;
   });
 
@@ -4818,16 +4510,14 @@ function initText(elem, parsed){
       _.nextTick(function(){
         var value = that.value
         parsed.set(self, value);
-        inProgress = true;
+        parsed.last = value;
         self.$update();
       })
     }else{
         var value = that.value
         parsed.set(self, value);
-        inProgress = true;
         self.$update();
     }
-    inProgress = false;
   };
 
   if(dom.msie !== 9 && "oninput" in dom.tNode ){
@@ -4857,19 +4547,16 @@ function initText(elem, parsed){
 // input:checkbox  binding
 
 function initCheckBox(elem, parsed){
-  var inProgress = false;
   var self = this;
   this.$watch(parsed, function(newValue){
-    if(inProgress) return;
     dom.attr(elem, 'checked', !!newValue);
   });
 
   var handler = function handler(){
     var value = this.checked;
     parsed.set(self, value);
-    inProgress= true;
+    parsed.last = value;
     self.$update();
-    inProgress = false;
   }
   if(parsed.set) dom.on(elem, "change", handler)
 
@@ -4887,9 +4574,7 @@ function initCheckBox(elem, parsed){
 
 function initRadio(elem, parsed){
   var self = this;
-  var inProgress = false;
   this.$watch(parsed, function( newValue ){
-    if(inProgress) return;
     if(newValue == elem.value) elem.checked = true;
     else elem.checked = false;
   });
@@ -4898,14 +4583,15 @@ function initRadio(elem, parsed){
   var handler = function handler(){
     var value = this.value;
     parsed.set(self, value);
-    inProgress= true;
+    parsed.last = value;
     self.$update();
-    inProgress = false;
   }
   if(parsed.set) dom.on(elem, "change", handler)
   // beacuse only after compile(init), the dom structrue is exsit. 
   if(parsed.get(self) === undefined){
-    if(elem.checked) parsed.set(self, elem.value);
+    if(elem.checked) {
+      parsed.set(self, elem.value);
+    }
   }
 
   return function destroy(){
@@ -5013,13 +4699,19 @@ Regular.animation({
   },
   "emit": function(step){
     var param = step.param;
+    var tmp = param.split(","),
+      evt = tmp[0] || "",
+      args = tmp[1]? Regular.expression(tmp[1]).get: null;
+
+    if(!evt) throw "you shoud specified a eventname in emit command";
+
     var self = this;
     return function(done){
-      self.$emit(param, step);
+      self.$emit(evt, args? args(self) : undefined);
       done();
     }
   },
-  // style: left {{10}}pxkk,
+  // style: left {10}px,
   style: function(step){
     var styles = {}, 
       param = step.param,
@@ -5070,8 +4762,8 @@ function processAnimate( element, value ){
 
   function animationDestroy(element){
     return function(){
-      element.onenter = undefined;
-      element.onleave = undefined;
+      delete element.onenter;
+      delete element.onleave;
     } 
   }
 
@@ -5097,9 +4789,12 @@ function processAnimate( element, value ){
       }else if(param === "enter"){
         element.onenter = seed.start;
       }else{
-        destroy = this._handleEvent( element, param, seed.start );
+        // destroy = this._handleEvent( element, param, seed.start );
+        this.$on(param, seed.start)
+        destroy = this.$off.bind(this, param, seed.start);
       }
 
+      // @TODO add
       destroies.push( destroy? destroy : animationDestroy(element) );
       destroy = null;
       continue
@@ -5132,7 +4827,6 @@ function processAnimate( element, value ){
 Regular.directive( "r-animation", processAnimate)
 
 
-
 });
 require.register("regularjs/src/directive/event.js", function(exports, require, module){
 /**
@@ -5145,7 +4839,8 @@ var Regular = require("../Regular.js");
 
 Regular._addProtoInheritCache("event");
 
-Regular.event( "enter" , function(elem, fire) {
+Regular.event("enter", function(elem, fire) {
+  _.log("on-enter will be removed in 0.4.0", "error");
   function update( ev ) {
     if ( ev.which === 13 ) {
       ev.preventDefault();
@@ -5266,6 +4961,7 @@ function TimeoutModule(Component){
 
 
 Regular.plugin('timeout', TimeoutModule);
+Regular.plugin('$timeout', TimeoutModule);
 });
 require.alias("regularjs/src/index.js", "regularjs/index.js");
 if (typeof exports == 'object') {
@@ -5291,6 +4987,11 @@ require.config({
 
 
 require(['rgl!foo.html', 'text!foo.html', 'regularjs'], function(foo, haha , Regular){
+
+  Regular.config({
+    END: '}}',
+    BEGIN: '{{'
+  })
 
     var Foo = Regular.extend({
       template: foo

@@ -1,6 +1,6 @@
 {
   "name": "requirejs-regular",
-  "version": "0.3.0-pre",
+  "version": "0.3.0",
   "main": "rgl.js",
   "ignore": [
     "**/.*",
@@ -11,7 +11,7 @@
     "package.json"
   ],
   "devDependencies": {
-    "regularjs": "regularjs/regular#master",
+    "regularjs": "~0.3.0",
     "requirejs-text": "2.0.12"
   }
 }

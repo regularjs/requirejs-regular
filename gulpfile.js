@@ -12,6 +12,7 @@ gulp.task('build', function(done) {
       output: {
         filename: 'rgl.js',
         path: __dirname,
+        library: "rgl",
         libraryTarget: 'umd'
       },
       resolve : {

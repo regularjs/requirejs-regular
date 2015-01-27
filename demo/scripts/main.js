@@ -15,6 +15,11 @@ require.config({
 
 require(['rgl!foo.html', 'text!foo.html', 'regularjs'], function(foo, haha , Regular){
 
+  Regular.config({
+    END: '}}',
+    BEGIN: '{{'
+  })
+
     var Foo = Regular.extend({
       template: foo
     })

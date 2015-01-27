@@ -5,7 +5,7 @@
   "categories": [
     "Loader plugins"
   ],
-  "main": "regular.js",
+  "main": "rgl.js",
   "github": "https://github.com/regularjs/requirejs-regular",
   "bugs": {
     "web": "https://github.com/regularjs/requirejs-regular/issues"
