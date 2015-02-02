@@ -11,7 +11,7 @@
     "package.json"
   ],
   "devDependencies": {
-    "regularjs": "~0.3.0",
+    "regularjs": "regularjs/regular#next",
     "requirejs-text": "2.0.12"
   }
 }

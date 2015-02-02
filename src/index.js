@@ -1,5 +1,5 @@
 
-define('rgl',['text', 'parser'], function (text, parser) {
+define('rgl',['text', 'regularjs'], function (text, parser) {
 
     if(!text.get && typeof nodeRequire !== "undefined" && typeof process !== 'undefined'){
         text.get = function (url, callback, errback) {

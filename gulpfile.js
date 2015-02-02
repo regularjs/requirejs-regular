@@ -17,10 +17,11 @@ gulp.task('build', function(done) {
       },
       resolve : {
         alias:{
-          parser : '../bower_components/regularjs/dist/regular-parser.js',
+          regularjs: "../bower_components/regularjs/dist/regular.js",
           text: '../bower_components/requirejs-text/text.js'
         }
-      }
+      },
+      externals: ["regularjs"]
   }, function(err, stats){
     if(stats.hasErrors() || err){
       throw stats.toJson().errors

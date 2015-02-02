@@ -2,7 +2,6 @@
 require.config({
     paths : {
         "rgl": '../../rgl',
-        "text": '../../bower_components/requirejs-text/text',
         "regularjs": '../../bower_components/regularjs/dist/regular'
     },
     rgl: {
@@ -13,7 +12,7 @@ require.config({
 });
 
 
-require(['rgl!foo.html', 'text!foo.html', 'regularjs'], function(foo, haha , Regular){
+require(['rgl!foo.html', 'rgl!foo.html', 'regularjs'], function(foo, haha , Regular){
 
   Regular.config({
     END: '}}',
